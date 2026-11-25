@@ -1,0 +1,20 @@
+[build-system]
+requires = ["setuptools>=61.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "agentctl"
+version = "0.1.0"
+description = "A simple CLI coding agent that reads, edits, and runs code from your terminal."
+readme = "README.md"
+requires-python = ">=3.10"
+license = { text = "MIT" }
+dependencies = [
+    "python-dotenv",
+]
+
+[project.scripts]
+agentctl = "agentctl.cli:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]
