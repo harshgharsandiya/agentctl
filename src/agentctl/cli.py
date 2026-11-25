@@ -164,14 +164,28 @@ def _log_tool_call(name: str, arguments: dict[str, Any]) -> None:
 
 
 def _confirm_tool(name: str, arguments: dict[str, Any]) -> bool:
-    """Ask the user to confirm write, edit, or shell command execution."""
+    """Ask the user to confirm file/folder changes or shell command execution."""
     if name == "run_command":
         summary = f"Run command: {arguments.get('command', '')}"
-    elif name in {"write_file", "edit_file"}:
+    elif name == "delete_folder" and arguments.get("recursive"):
+        summary = f"delete_folder RECURSIVELY on {arguments.get('path', '')}"
+    elif name in {"write_file", "edit_file", "create_folder", "delete_file", "delete_folder"}:
         summary = f"{name} on {arguments.get('path', '')}"
     else:
         summary = f"Run {name}"
     return typer.confirm(f"Allow {summary}?", default=False)
+
+
+def _log_tool_result(name: str, result: str) -> None:
+    """Show command output or short tool status directly in the terminal."""
+    if name == "run_command":
+        lines = result.splitlines()
+        preview = "\n".join(lines[:15])
+        if len(lines) > 15:
+            preview += f"\n... ({len(lines) - 15} more lines)"
+        console.print(f"[dim]{preview}[/dim]")
+    elif result.startswith("Error:"):
+        console.print(f"[yellow]{result}[/yellow]")
 
 
 def _run_turn(
@@ -228,6 +242,7 @@ def _run_turn(
             on_tool_call=_on_tool,
             confirm_fn=_confirm_tool,
             on_token=_on_token,
+            on_tool_result=_log_tool_result,
         )
     finally:
         _stop_live()

@@ -1,10 +1,14 @@
 """Pytest unit tests for all agentctl tools and safety rules."""
 
 from pathlib import Path
+import sys
 
 import pytest
 
 from agentctl.tools import TOOLS, get_tool_schemas, run_tool
+from agentctl.tools.create_folder import create_folder
+from agentctl.tools.delete_file import delete_file
+from agentctl.tools.delete_folder import delete_folder
 from agentctl.tools.edit_file import edit_file
 from agentctl.tools.list_files import list_files
 from agentctl.tools.read_file import read_file
@@ -14,11 +18,14 @@ from agentctl.tools.write_file import write_file
 
 
 def test_all_tools_registered() -> None:
-    """All 6 expected tools are registered with matching schemas."""
+    """All 9 expected tools are registered with matching schemas."""
     expected = {
         "read_file",
         "write_file",
         "edit_file",
+        "create_folder",
+        "delete_file",
+        "delete_folder",
         "list_files",
         "search_files",
         "run_command",
@@ -64,6 +71,34 @@ def test_edit_file_single_zero_and_multiple_matches(
     assert edit_file("code.py", "y = 2", "y = 3").startswith("Error:")
 
 
+def test_create_and_delete_folder_and_file(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """create_folder, delete_file, and delete_folder manage files and directories safely."""
+    monkeypatch.chdir(tmp_path)
+
+    assert create_folder("nested/dir").startswith("Created folder")
+    assert (tmp_path / "nested/dir").is_dir()
+
+    (tmp_path / "nested/dir/a.txt").write_text("hi", encoding="utf-8")
+    # Non-empty folder requires recursive=True.
+    assert delete_folder("nested/dir").startswith("Error:")
+    assert delete_file("nested/dir").startswith("Error:")
+
+    assert delete_file("nested/dir/a.txt").startswith("Deleted file")
+    assert not (tmp_path / "nested/dir/a.txt").exists()
+
+    assert delete_folder("nested/dir").startswith("Deleted folder")
+    assert not (tmp_path / "nested/dir").exists()
+
+    # Recursive delete removes non-empty folder, while root '.' is always protected.
+    (tmp_path / "nested/sub").mkdir(parents=True)
+    (tmp_path / "nested/sub/b.txt").write_text("data", encoding="utf-8")
+    assert delete_folder("nested", recursive=True).startswith("Deleted folder")
+    assert not (tmp_path / "nested").exists()
+    assert delete_folder(".", recursive=True).startswith("Error:")
+
+
 def test_list_files_skips_ignored_dirs(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     """list_files lists project files while skipping .git, node_modules, __pycache__, .venv."""
     monkeypatch.chdir(tmp_path)
@@ -95,13 +130,15 @@ def test_search_files_matches_and_max_cap(
     assert search_files("does_not_exist") == "No matches found."
 
 
-def test_run_command_output_and_timeout(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    """run_command captures stdout, stderr, exit code, and handles timeouts."""
+def test_run_command_output_venv_and_timeout(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """run_command uses the active Python environment, captures output, and enforces timeout."""
     monkeypatch.chdir(tmp_path)
 
-    res = run_command('python -c "import sys; print(\'ok\'); print(\'err\', file=sys.stderr)"')
+    res = run_command('python -c "import sys; print(sys.executable); print(\'err\', file=sys.stderr)"')
     assert "Exit code: 0" in res
-    assert "ok" in res
+    assert str(Path(sys.executable).resolve().parent).lower() in res.lower()
     assert "err" in res
 
     timeout_res = run_command('python -c "import time; time.sleep(2)"', timeout=1)
@@ -109,12 +146,15 @@ def test_run_command_output_and_timeout(tmp_path: Path, monkeypatch: pytest.Monk
 
 
 def test_path_safety_rejects_escape(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    """All file tools reject paths escaping the current working directory."""
+    """All file and folder tools reject paths escaping the current working directory."""
     monkeypatch.chdir(tmp_path)
 
     assert read_file("../escape.txt").startswith("Error:")
     assert write_file("../escape.txt", "bad").startswith("Error:")
     assert edit_file("../escape.txt", "a", "b").startswith("Error:")
+    assert create_folder("../escape_dir").startswith("Error:")
+    assert delete_file("../escape.txt").startswith("Error:")
+    assert delete_folder("../escape_dir").startswith("Error:")
     assert list_files("..").startswith("Error:")
     assert search_files("x", "..").startswith("Error:")
 
@@ -132,17 +172,22 @@ def test_output_truncation(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> N
 def test_confirmation_required_unless_yes(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """Mutating and shell tools require confirmation unless yes=True."""
+    """Mutating, delete, and shell tools require confirmation unless yes=True."""
     monkeypatch.chdir(tmp_path)
 
-    declined = run_tool(
-        "write_file",
-        {"path": "a.txt", "content": "hi"},
-        yes=False,
-        confirm_fn=lambda _name, _args: False,
-    )
-    assert "cancelled" in declined
-    assert not (tmp_path / "a.txt").exists()
+    for tool_name, args in (
+        ("write_file", {"path": "a.txt", "content": "hi"}),
+        ("create_folder", {"path": "sub"}),
+        ("delete_file", {"path": "a.txt"}),
+        ("delete_folder", {"path": "sub"}),
+    ):
+        declined = run_tool(
+            tool_name,
+            args,
+            yes=False,
+            confirm_fn=lambda _name, _args: False,
+        )
+        assert "cancelled" in declined
 
     accepted = run_tool(
         "write_file",

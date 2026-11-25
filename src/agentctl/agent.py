@@ -29,6 +29,7 @@ def run_agent(
     on_tool_call: Callable[[str, dict[str, Any]], None] | None = None,
     confirm_fn: Callable[[str, dict[str, Any]], bool] | None = None,
     on_token: Callable[[str], None] | None = None,
+    on_tool_result: Callable[[str, str], None] | None = None,
 ) -> str:
     """Run the agent loop for a task until completion or MAX_STEPS."""
     history = messages if messages is not None else []
@@ -80,6 +81,9 @@ def run_agent(
                     yes=yes,
                     confirm_fn=confirm_fn,
                 )
+
+            if on_tool_result:
+                on_tool_result(tc["name"], result)
 
             history.append(
                 {

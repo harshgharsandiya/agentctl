@@ -4,7 +4,14 @@ from pathlib import Path
 from typing import Any, Callable
 
 MAX_OUTPUT_CHARS = 10_000
-CONFIRM_TOOLS = {"write_file", "edit_file", "run_command"}
+CONFIRM_TOOLS = {
+    "write_file",
+    "edit_file",
+    "create_folder",
+    "delete_file",
+    "delete_folder",
+    "run_command",
+}
 
 
 def resolve_safe_path(path: str) -> Path:
@@ -30,6 +37,9 @@ def _default_confirm(name: str, arguments: dict[str, Any]) -> bool:
 
 
 from agentctl.tools import (  # noqa: E402
+    create_folder,
+    delete_file,
+    delete_folder,
     edit_file,
     list_files,
     read_file,
@@ -50,6 +60,18 @@ TOOLS: dict[str, dict[str, Any]] = {
     "edit_file": {
         "fn": edit_file.edit_file,
         "schema": edit_file.SCHEMA,
+    },
+    "create_folder": {
+        "fn": create_folder.create_folder,
+        "schema": create_folder.SCHEMA,
+    },
+    "delete_file": {
+        "fn": delete_file.delete_file,
+        "schema": delete_file.SCHEMA,
+    },
+    "delete_folder": {
+        "fn": delete_folder.delete_folder,
+        "schema": delete_folder.SCHEMA,
     },
     "list_files": {
         "fn": list_files.list_files,

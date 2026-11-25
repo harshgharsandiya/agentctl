@@ -4,7 +4,7 @@ A simple CLI coding agent in Python (powered by Groq) that reads, edits, searche
 
 ## Demo
 
-![agentctl chat terminal demo](test-code/demo.png)
+![agentctl chat terminal demo](test-code/demo3.png)
 
 ## How It Works
 
@@ -22,20 +22,23 @@ Task → LLM (Groq) → Tool call → Result → LLM → ... → Final Answer
 - **Interactive Chat & Sessions:** `agentctl chat` and `--session` loops with JSON history saved under `sessions/` and automatic history compaction
 - **`@` File Mentions:** Type `@` in chat mode for live folder/file autocomplete (`prompt_toolkit`), highlighted inline as `@filename` while sending the full relative path to the model
 - **Safety:**
-    - All file paths are restricted to the current working directory
+    - All file and folder paths are restricted to the current working directory
     - Tool outputs longer than 10,000 characters are truncated
-    - `write_file`, `edit_file`, and `run_command` ask for `y/n` confirmation unless `--yes` (`-y`) is passed
+    - `write_file`, `edit_file`, `create_folder`, `delete_file`, `delete_folder`, and `run_command` ask for `y/n` confirmation unless `--yes` (`-y`) is passed
 
 ## Tools
 
-| Tool           | What it does                                                                                                    |
-| -------------- | --------------------------------------------------------------------------------------------------------------- |
-| `read_file`    | Read a file, optionally by 1-based `start_line` and `end_line`                                                  |
-| `write_file`   | Create or overwrite a file (requires confirmation)                                                              |
-| `edit_file`    | Replace exactly one `old_text` match with `new_text` (requires confirmation)                                    |
-| `list_files`   | List files in a folder, skipping `.git`, `node_modules`, `__pycache__`, `.venv`, `venv`                         |
-| `search_files` | Plain-text search returning `file:line: text` matches (max 50)                                                  |
-| `run_command`  | Run a shell command with timeout (default 30s) and return exit code, stdout, and stderr (requires confirmation) |
+| Tool            | What it does                                                                                                     |
+| --------------- | ---------------------------------------------------------------------------------------------------------------- |
+| `read_file`     | Read a file, optionally by 1-based `start_line` and `end_line`                                                   |
+| `write_file`    | Create or overwrite a file (requires confirmation)                                                               |
+| `edit_file`     | Replace exactly one `old_text` match with `new_text` (requires confirmation)                                     |
+| `create_folder` | Create a folder and any missing parent folders (requires confirmation)                                           |
+| `delete_file`   | Delete a file inside the project (requires confirmation)                                                         |
+| `delete_folder` | Delete an empty folder, or non-empty with `recursive=true` (requires confirmation)                               |
+| `list_files`    | List files in a folder, skipping `.git`, `node_modules`, `__pycache__`, `.venv`, `venv`                          |
+| `search_files`  | Plain-text search returning `file:line: text` matches (max 50)                                                   |
+| `run_command`   | Run a shell command using the active Python environment (default 60s timeout) and show exit code, stdout, stderr |
 
 ## Installation
 
@@ -118,10 +121,13 @@ agentctl "what does @config.py do?" --session demo
 │       ├── config.py       # Settings (model, MAX_STEPS, sessions dir, API key)
 │       ├── prompts.py      # System prompt
 │       └── tools/
-│           ├── __init__.py # Tool registry, path safety, truncation, confirmations
+│           ├── __init__.py     # Tool registry, path safety, truncation, confirmations
 │           ├── read_file.py
 │           ├── write_file.py
 │           ├── edit_file.py
+│           ├── create_folder.py
+│           ├── delete_file.py
+│           ├── delete_folder.py
 │           ├── list_files.py
 │           ├── search_files.py
 │           └── run_command.py
@@ -139,7 +145,7 @@ pytest -v
 ## Limitations
 
 - **`run_command` has no sandbox:** Approved shell commands execute directly on your machine; your `y/n` confirmation (disabled by `--yes`) is the only protection.
-- **Path safety does not constrain shell commands:** Path checks restrict the file tools (`read_file`, `write_file`, `edit_file`, `list_files`, `search_files`) to the current working directory, not arbitrary commands you approve in `run_command`.
+- **Path safety does not constrain shell commands:** Path checks restrict the file/folder tools (`read_file`, `write_file`, `edit_file`, `create_folder`, `delete_file`, `delete_folder`, `list_files`, `search_files`) to the current working directory, not arbitrary commands you approve in `run_command`.
 - **Single provider and model:** Only Groq (`openai/gpt-oss-20b` in `src/agentctl/config.py`) is supported out of the box.
 - **No cost tracking or general retries:** Token usage and API cost are not tracked, and only malformed tool-call stream errors retry once (no general network/rate-limit backoff).
 - **No automatic rollback:** Edits and writes modify files in place without an automatic undo or git diff preview.
