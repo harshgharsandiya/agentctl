@@ -12,6 +12,8 @@ license = { text = "MIT" }
 dependencies = [
     "groq",
     "python-dotenv",
+    "rich",
+    "typer",
 ]
 
 [project.scripts]
