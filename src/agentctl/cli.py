@@ -18,6 +18,17 @@ def _log_tool_call(name: str, arguments: dict[str, Any]) -> None:
     console.print(f"[dim]→ {name}({formatted_args})[/dim]")
 
 
+def _confirm_tool(name: str, arguments: dict[str, Any]) -> bool:
+    """Ask the user to confirm write, edit, or shell command execution."""
+    if name == "run_command":
+        summary = f"Run command: {arguments.get('command', '')}"
+    elif name in {"write_file", "edit_file"}:
+        summary = f"{name} on {arguments.get('path', '')}"
+    else:
+        summary = f"Run {name}"
+    return typer.confirm(f"Allow {summary}?", default=False)
+
+
 @app.command()
 def run(
     task: Optional[str] = typer.Argument(
@@ -40,7 +51,14 @@ def run(
 
     _ = yes  # Reserved for tool confirmations in Phase 4.
     console.print("[dim]Thinking...[/dim]")
-    answer = run_agent(task, on_tool_call=_log_tool_call)
+    answer = run_agent(
+        task,
+        messages=messages,
+        yes=yes,
+        on_tool_call=_log_tool_call,
+        confirm_fn=_confirm_tool,
+    )
+    saved_path = save(session_id, messages)
     console.print(Markdown(answer))
 
 

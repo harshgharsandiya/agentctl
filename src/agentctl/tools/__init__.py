@@ -1,9 +1,10 @@
-"""Tool registry and shared path/output helpers for agentctl."""
+"""Tool registry and shared path/output/confirmation helpers for agentctl."""
 
 from pathlib import Path
 from typing import Any, Callable
 
 MAX_OUTPUT_CHARS = 10_000
+CONFIRM_TOOLS = {"write_file", "edit_file", "run_command"}
 
 
 def resolve_safe_path(path: str) -> Path:
@@ -22,12 +23,45 @@ def truncate_output(text: str, limit: int = MAX_OUTPUT_CHARS) -> str:
     return f"{text[:limit]}\n\n... [truncated: output exceeded {limit} characters]"
 
 
-from agentctl.tools import read_file  # noqa: E402
+def _default_confirm(name: str, arguments: dict[str, Any]) -> bool:
+    """Prompt the user on stdin to confirm a mutating or shell tool call."""
+    answer = input(f"Allow {name} with {arguments}? [y/N]: ").strip().lower()
+    return answer in {"y", "yes"}
+
+
+from agentctl.tools import (  # noqa: E402
+    edit_file,
+    list_files,
+    read_file,
+    run_command,
+    search_files,
+    write_file,
+)
 
 TOOLS: dict[str, dict[str, Any]] = {
     "read_file": {
         "fn": read_file.read_file,
         "schema": read_file.SCHEMA,
+    },
+    "write_file": {
+        "fn": write_file.write_file,
+        "schema": write_file.SCHEMA,
+    },
+    "edit_file": {
+        "fn": edit_file.edit_file,
+        "schema": edit_file.SCHEMA,
+    },
+    "list_files": {
+        "fn": list_files.list_files,
+        "schema": list_files.SCHEMA,
+    },
+    "search_files": {
+        "fn": search_files.search_files,
+        "schema": search_files.SCHEMA,
+    },
+    "run_command": {
+        "fn": run_command.run_command,
+        "schema": run_command.SCHEMA,
     },
 }
 
@@ -43,12 +77,23 @@ def get_tool(name: str) -> Callable[..., str] | None:
     return entry["fn"] if entry else None
 
 
-def run_tool(name: str, arguments: dict[str, Any]) -> str:
+def run_tool(
+    name: str,
+    arguments: dict[str, Any],
+    yes: bool = False,
+    confirm_fn: Callable[[str, dict[str, Any]], bool] | None = None,
+) -> str:
     """Execute a registered tool by name and always return a string result."""
     fn = get_tool(name)
     if fn is None:
         available = ", ".join(TOOLS.keys())
         return f"Error: unknown tool '{name}'. Available tools: {available}."
+
+    if name in CONFIRM_TOOLS and not yes:
+        prompter = confirm_fn or _default_confirm
+        if not prompter(name, arguments):
+            return f"Error: {name} cancelled by user."
+
     try:
         return str(fn(**arguments))
     except TypeError as exc:

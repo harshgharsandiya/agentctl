@@ -16,6 +16,11 @@ dependencies = [
     "typer",
 ]
 
+[project.optional-dependencies]
+dev = [
+    "pytest<9",
+]
+
 [project.scripts]
 agentctl = "agentctl.cli:main"
 

@@ -25,7 +25,9 @@ def _parse_arguments(raw_args: str) -> dict[str, Any] | str:
 def run_agent(
     task: str,
     messages: list[dict[str, Any]] | None = None,
+    yes: bool = False,
     on_tool_call: Callable[[str, dict[str, Any]], None] | None = None,
+    confirm_fn: Callable[[str, dict[str, Any]], bool] | None = None,
 ) -> str:
     """Run the agent loop for a task until completion or MAX_STEPS."""
     history = messages if messages is not None else []
@@ -71,7 +73,12 @@ def run_agent(
             else:
                 if on_tool_call:
                     on_tool_call(tc["name"], args)
-                result = run_tool(tc["name"], args)
+                result = run_tool(
+                    tc["name"],
+                    args,
+                    yes=yes,
+                    confirm_fn=confirm_fn,
+                )
 
             history.append(
                 {
