@@ -36,18 +36,38 @@ def _run_turn(
     messages: list[dict[str, Any]],
     yes: bool,
 ) -> list[dict[str, Any]]:
-    """Execute one agent turn, print the response, and compact/save history."""
+    """Execute one agent turn, stream the response, and compact/save history."""
+    streamed = False
+
+    def _on_token(token: str) -> None:
+        nonlocal streamed
+        streamed = True
+        print(token, end="", flush=True)
+
+    def _on_tool(name: str, arguments: dict[str, Any]) -> None:
+        nonlocal streamed
+        if streamed:
+            print()
+            streamed = False
+        _log_tool_call(name, arguments)
+
     console.print("[dim]Thinking...[/dim]")
     answer = run_agent(
         task,
         messages=messages,
         yes=yes,
-        on_tool_call=_log_tool_call,
+        on_tool_call=_on_tool,
         confirm_fn=_confirm_tool,
+        on_token=_on_token,
     )
     cleaned = compact_messages(messages)
     save(session_id, cleaned)
-    console.print(Markdown(answer))
+
+    if streamed:
+        print()
+    elif answer:
+        console.print(Markdown(answer))
+
     return cleaned
 
 
@@ -57,9 +77,9 @@ def _session_loop(
     yes: bool,
     initial_task: str | None = None,
 ) -> None:
-    """Run an interactive loop for a session until quit/exit/Ctrl+C/Ctrl+Z."""
+    """Run an interactive chat loop until quit/exit/Ctrl+C/Ctrl+Z."""
     console.print(
-        f"[bold cyan]Session '{session_id}'[/bold cyan] "
+        f"[bold cyan]Chat session '{session_id}'[/bold cyan] "
         "[dim](type 'exit' or 'quit', or press Ctrl+C / Ctrl+Z to stop)[/dim]"
     )
 
@@ -90,7 +110,7 @@ def _session_loop(
 def run(
     task: Optional[str] = typer.Argument(
         None,
-        help="Task prompt to run in one-shot mode.",
+        help="Task prompt for one-shot mode, or 'chat' for interactive mode.",
     ),
     yes: bool = typer.Option(
         False,
@@ -105,7 +125,13 @@ def run(
         help="Session ID to open in a loop and save conversation history.",
     ),
 ) -> None:
-    """Run agentctl one-shot or stay in an interactive session loop."""
+    """Run agentctl one-shot or enter interactive chat mode."""
+    if task == "chat":
+        session_id = session or make_session_id()
+        messages = load(session_id)
+        _session_loop(session_id, messages, yes=yes)
+        return
+
     if session:
         messages = load(session)
         _session_loop(session, messages, yes=yes, initial_task=task)
@@ -113,7 +139,7 @@ def run(
 
     if not task:
         console.print(
-            "[yellow]Please provide a task or --session. Example:[/yellow] agentctl \"what does config.py do?\""
+            "[yellow]Please provide a task or 'chat'. Example:[/yellow] agentctl \"what does config.py do?\" or agentctl chat"
         )
         raise typer.Exit(code=1)
 

@@ -28,6 +28,7 @@ def run_agent(
     yes: bool = False,
     on_tool_call: Callable[[str, dict[str, Any]], None] | None = None,
     confirm_fn: Callable[[str, dict[str, Any]], bool] | None = None,
+    on_token: Callable[[str], None] | None = None,
 ) -> str:
     """Run the agent loop for a task until completion or MAX_STEPS."""
     history = messages if messages is not None else []
@@ -38,7 +39,7 @@ def run_agent(
     tool_schemas = get_tool_schemas()
 
     for _step in range(MAX_STEPS):
-        reply = call_llm(history, tools=tool_schemas)
+        reply = call_llm(history, tools=tool_schemas, on_token=on_token)
         tool_calls = reply["tool_calls"]
 
         if not tool_calls:

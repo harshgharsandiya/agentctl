@@ -1,6 +1,6 @@
-"""LLM client wrapper using the official Groq SDK."""
+"""LLM client wrapper with streaming using the official Groq SDK."""
 
-from typing import Any
+from typing import Any, Callable
 
 from groq import Groq
 
@@ -17,12 +17,14 @@ def _get_client() -> Groq:
 def call_llm(
     messages: list[dict[str, Any]],
     tools: list[dict[str, Any]] | None = None,
+    on_token: Callable[[str], None] | None = None,
 ) -> dict[str, Any]:
-    """Send messages (and optional tools) to Groq and return the parsed reply."""
+    """Stream a chat completion from Groq and return full content and tool calls."""
     client = _get_client()
     kwargs: dict[str, Any] = {
         "model": MODEL_NAME,
         "messages": messages,
+        "stream": True,
     }
     if tools:
         kwargs["tools"] = [
@@ -31,26 +33,48 @@ def call_llm(
         # Let our agent loop return unknown-tool errors instead of failing on HTTP 400.
         kwargs["disable_tool_validation"] = True
 
-    response = client.chat.completions.create(**kwargs)
-    message = response.choices[0].message
+    stream = client.chat.completions.create(**kwargs)
+
+    content_parts: list[str] = []
+    tool_calls_by_index: dict[int, dict[str, str]] = {}
+
+    for chunk in stream:
+        if not chunk.choices:
+            continue
+        delta = chunk.choices[0].delta
+
+        if delta.content:
+            content_parts.append(delta.content)
+            if on_token:
+                on_token(delta.content)
+
+        if delta.tool_calls:
+            for tc_delta in delta.tool_calls:
+                entry = tool_calls_by_index.setdefault(
+                    tc_delta.index,
+                    {"id": "", "name": "", "arguments": ""},
+                )
+                if tc_delta.id:
+                    entry["id"] = tc_delta.id
+                if tc_delta.function:
+                    if tc_delta.function.name:
+                        entry["name"] += tc_delta.function.name
+                    if tc_delta.function.arguments:
+                        entry["arguments"] += tc_delta.function.arguments
 
     tool_calls = [
-        {
-            "id": tc.id,
-            "name": tc.function.name,
-            "arguments": tc.function.arguments,
-        }
-        for tc in (message.tool_calls or [])
+        tool_calls_by_index[idx] for idx in sorted(tool_calls_by_index)
     ]
 
     return {
-        "content": message.content or "",
+        "content": "".join(content_parts),
         "tool_calls": tool_calls,
     }
 
 
 if __name__ == "__main__":
-    reply = call_llm(
-        [{"role": "user", "content": "Say hello in one short sentence."}]
+    call_llm(
+        [{"role": "user", "content": "Say hello in one short sentence."}],
+        on_token=lambda token: print(token, end="", flush=True),
     )
-    print(reply["content"])
+    print()
