@@ -8,135 +8,98 @@ A simple CLI coding agent in Python (powered by Groq) that reads, edits, searche
 
 ## How It Works
 
-You give a task. The agent thinks, calls tools in a loop (up to `MAX_STEPS = 30`), checks the output, and streams the final Markdown answer to your terminal.
+```
+Task → LLM → Tool call → Result → LLM → ... → Final Answer
+```
 
-```
-Task → LLM (Groq) → Tool call → Result → LLM → ... → Final Answer
-```
+You give a task. The agent calls tools in a loop (max 30 steps), checks the results, and streams the answer to your terminal.
 
 ## Features
 
-- **Provider:** Groq SDK (`groq`) using `openai/gpt-oss-20b` (configured in `src/agentctl/config.py`)
-- **Agent Loop:** Tool-calling loop in `src/agentctl/agent.py` with `MAX_STEPS = 30`
-- **Live Streaming:** Streams formatted Markdown responses directly in the terminal (`rich`)
-- **Interactive Chat & Sessions:** `agentctl chat` and `--session` loops with JSON history saved under `sessions/` and automatic history compaction
-- **`@` File Mentions:** Type `@` in chat mode for live folder/file autocomplete (`prompt_toolkit`), highlighted inline as `@filename` while sending the full relative path to the model
-- **Safety:**
-    - All file and folder paths are restricted to the current working directory
-    - Tool outputs longer than 10,000 characters are truncated
-    - `write_file`, `edit_file`, `create_folder`, `delete_file`, `delete_folder`, and `run_command` ask for `y/n` confirmation unless `--yes` (`-y`) is passed
+- **Agent loop** with tool calling
+- **Live streaming** of Markdown answers
+- **Chat mode** with saved, resumable sessions
+- **`@` file mentions** with autocomplete
+- **Safe by default:** file access stays inside your project, and risky actions ask for `y/n` confirmation
 
 ## Tools
 
-| Tool            | What it does                                                                                                     |
-| --------------- | ---------------------------------------------------------------------------------------------------------------- |
-| `read_file`     | Read a file, optionally by 1-based `start_line` and `end_line`                                                   |
-| `write_file`    | Create or overwrite a file (requires confirmation)                                                               |
-| `edit_file`     | Replace exactly one `old_text` match with `new_text` (requires confirmation)                                     |
-| `create_folder` | Create a folder and any missing parent folders (requires confirmation)                                           |
-| `delete_file`   | Delete a file inside the project (requires confirmation)                                                         |
-| `delete_folder` | Delete an empty folder, or non-empty with `recursive=true` (requires confirmation)                               |
-| `list_files`    | List files in a folder, skipping `.git`, `node_modules`, `__pycache__`, `.venv`, `venv`                          |
-| `search_files`  | Plain-text search returning `file:line: text` matches (max 50)                                                   |
-| `run_command`   | Run a shell command using the active Python environment (default 60s timeout) and show exit code, stdout, stderr |
+| Tool            | What it does                   |
+| --------------- | ------------------------------ |
+| `read_file`     | Read a file                    |
+| `write_file`    | Create or overwrite a file     |
+| `edit_file`     | Replace text in a file         |
+| `create_folder` | Create a folder                |
+| `delete_file`   | Delete a file                  |
+| `delete_folder` | Delete a folder                |
+| `list_files`    | List files in a folder         |
+| `search_files`  | Search text across the project |
+| `run_command`   | Run a shell command            |
 
-## Installation
+Writing, editing, deleting, and running commands need your approval.
 
-1. Create and activate a virtual environment (Python 3.10+):
+## Quick Start
 
-    ```powershell
-    python -m venv venv
-    .\venv\Scripts\Activate.ps1
-    ```
+```powershell
+# 1. Set up
+python -m venv venv
+.\venv\Scripts\Activate.ps1      # macOS/Linux: source venv/bin/activate
+pip install -e ".[dev]"
 
-2. Upgrade `pip` (if needed) and install `agentctl` in editable mode with dev dependencies:
-
-    ```powershell
-    python -m pip install --upgrade pip
-    pip install -e ".[dev]"
-    ```
-
-3. Copy `.env.example` to `.env` and add your Groq API key:
-
-    ```powershell
-    copy .env.example .env
-    ```
-
-    Edit `.env`:
-
-    ```env
-    GROQ_API_KEY=your-key-here
-    ```
+# 2. Add your Groq API key
+copy .env.example .env           # then put your key in .env
+```
 
 ## Usage
 
-### One-shot mode
-
 ```powershell
+# One-shot
 agentctl "what does src/agentctl/config.py do?"
-agentctl "tell me the 7th line of @cli.py"
-```
 
-Skip confirmation prompts for writes/edits/commands with `--yes` (`-y`):
-
-```powershell
-agentctl "Add a function add(a, b) to math_utils.py and write a test for it, then run the tests." --yes
-```
-
-### Interactive chat mode
-
-```powershell
+# Chat mode
 agentctl chat
+
+# Resume a saved session
+agentctl chat --session demo
+
+# Skip confirmations
+agentctl "add a function add(a, b) to math_utils.py and test it" --yes
 ```
 
-Inside chat mode:
+In chat, type `@` to pick a file and `exit` to quit.
 
-- Type `@` to browse and autocomplete project files/folders
-- Type `exit`, `quit`, `q`, or press `Ctrl+C` / `Ctrl+Z` (then Enter) to exit
+## Learn How It's Built
 
-### Resumable named sessions
+Want to build your own? The **[step-by-step guide](docs/GUIDE.md)** walks through it in 7 phases:
 
-Open or resume a saved session in an interactive loop (`sessions/<name>.json`):
+| Phase | You build                | Main files            |
+| ----- | ------------------------ | --------------------- |
+| 1     | Call the LLM             | `config.py`, `llm.py` |
+| 2     | CLI wrapper              | `cli.py`              |
+| 3     | First tool + agent loop  | `agent.py`, `tools/`  |
+| 4     | Remaining tools + safety | `tools/`              |
+| 5     | Saved sessions           | `history.py`          |
+| 6     | Streaming + chat mode    | `llm.py`, `cli.py`    |
+| 7     | Tests + polish           | `tests/`, README      |
 
-```powershell
-agentctl --session demo
-agentctl chat --session demo --yes
-agentctl "what does @config.py do?" --session demo
-```
+The core idea is a loop: **ask the LLM → run the tool it requests → send back the result → repeat until done.**
 
 ## Project Structure
 
 ```text
-├── pyproject.toml
-├── README.md
-├── .env.example
-├── .gitignore
-├── src/
-│   └── agentctl/
-│       ├── __init__.py
-│       ├── cli.py          # Typer CLI, @path autocomplete, live Markdown streaming
-│       ├── agent.py        # Agent loop (MAX_STEPS limit)
-│       ├── llm.py          # Groq streaming client + tool-call assembly
-│       ├── history.py      # History compaction + JSON save/load
-│       ├── config.py       # Settings (model, MAX_STEPS, sessions dir, API key)
-│       ├── prompts.py      # System prompt
-│       └── tools/
-│           ├── __init__.py     # Tool registry, path safety, truncation, confirmations
-│           ├── read_file.py
-│           ├── write_file.py
-│           ├── edit_file.py
-│           ├── create_folder.py
-│           ├── delete_file.py
-│           ├── delete_folder.py
-│           ├── list_files.py
-│           ├── search_files.py
-│           └── run_command.py
-├── sessions/               # Saved JSON chat histories (gitignored)
-└── tests/
-    └── test_tools.py       # Pytest suite for all tools and safety rules
+src/agentctl/
+├── cli.py        # CLI and chat mode
+├── agent.py      # Agent loop
+├── llm.py        # Groq client + streaming
+├── history.py    # Save/load sessions
+├── config.py     # Settings
+├── prompts.py    # System prompt
+└── tools/        # One file per tool
+docs/GUIDE.md     # Build guide
+tests/            # Pytest tests
 ```
 
-## Running Tests
+## Tests
 
 ```powershell
 pytest -v
@@ -144,11 +107,9 @@ pytest -v
 
 ## Limitations
 
-- **`run_command` has no sandbox:** Approved shell commands execute directly on your machine; your `y/n` confirmation (disabled by `--yes`) is the only protection.
-- **Path safety does not constrain shell commands:** Path checks restrict the file/folder tools (`read_file`, `write_file`, `edit_file`, `create_folder`, `delete_file`, `delete_folder`, `list_files`, `search_files`) to the current working directory, not arbitrary commands you approve in `run_command`.
-- **Single provider and model:** Only Groq (`openai/gpt-oss-20b` in `src/agentctl/config.py`) is supported out of the box.
-- **No cost tracking or general retries:** Token usage and API cost are not tracked, and only malformed tool-call stream errors retry once (no general network/rate-limit backoff).
-- **No automatic rollback:** Edits and writes modify files in place without an automatic undo or git diff preview.
+- `run_command` has no sandbox. Your confirmation is the only protection.
+- Only Groq is supported.
+- No cost tracking or automatic undo.
 
 ## License
 
