@@ -18,6 +18,7 @@ SCHEMA = {
             },
         },
         "required": ["path", "content"],
+        "additionalProperties": False,
     },
 }
 

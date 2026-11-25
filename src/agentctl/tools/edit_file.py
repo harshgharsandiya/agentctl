@@ -22,6 +22,7 @@ SCHEMA = {
             },
         },
         "required": ["path", "old_text", "new_text"],
+        "additionalProperties": False,
     },
 }
 

@@ -24,6 +24,7 @@ SCHEMA = {
             },
         },
         "required": ["query"],
+        "additionalProperties": False,
     },
 }
 

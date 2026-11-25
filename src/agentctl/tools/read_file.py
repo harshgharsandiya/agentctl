@@ -22,6 +22,7 @@ SCHEMA = {
             },
         },
         "required": ["path"],
+        "additionalProperties": False,
     },
 }
 

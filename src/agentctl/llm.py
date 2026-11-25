@@ -2,7 +2,7 @@
 
 from typing import Any, Callable
 
-from groq import Groq
+from groq import APIError, Groq
 
 from agentctl.config import GROQ_API_KEY, MODEL_NAME
 
@@ -14,25 +14,12 @@ def _get_client() -> Groq:
     return Groq(api_key=GROQ_API_KEY)
 
 
-def call_llm(
-    messages: list[dict[str, Any]],
-    tools: list[dict[str, Any]] | None = None,
-    on_token: Callable[[str], None] | None = None,
+def _stream_once(
+    client: Groq,
+    kwargs: dict[str, Any],
+    on_token: Callable[[str], None] | None,
 ) -> dict[str, Any]:
-    """Stream a chat completion from Groq and return full content and tool calls."""
-    client = _get_client()
-    kwargs: dict[str, Any] = {
-        "model": MODEL_NAME,
-        "messages": messages,
-        "stream": True,
-    }
-    if tools:
-        kwargs["tools"] = [
-            {"type": "function", "function": schema} for schema in tools
-        ]
-        # Let our agent loop return unknown-tool errors instead of failing on HTTP 400.
-        kwargs["disable_tool_validation"] = True
-
+    """Execute one streaming completion call and collect text and tool calls."""
     stream = client.chat.completions.create(**kwargs)
 
     content_parts: list[str] = []
@@ -69,6 +56,40 @@ def call_llm(
     return {
         "content": "".join(content_parts),
         "tool_calls": tool_calls,
+    }
+
+
+def call_llm(
+    messages: list[dict[str, Any]],
+    tools: list[dict[str, Any]] | None = None,
+    on_token: Callable[[str], None] | None = None,
+) -> dict[str, Any]:
+    """Stream a chat completion from Groq, retrying once on malformed tool-call stream errors."""
+    client = _get_client()
+    kwargs: dict[str, Any] = {
+        "model": MODEL_NAME,
+        "messages": messages,
+        "stream": True,
+    }
+    if tools:
+        kwargs["tools"] = [
+            {"type": "function", "function": schema} for schema in tools
+        ]
+        # Let our agent loop return unknown-tool errors instead of failing on HTTP 400.
+        kwargs["disable_tool_validation"] = True
+
+    last_error: APIError | None = None
+    for _attempt in range(2):
+        try:
+            return _stream_once(client, kwargs, on_token)
+        except APIError as exc:
+            last_error = exc
+            if "tool call" not in str(exc).lower() and "json" not in str(exc).lower():
+                break
+
+    return {
+        "content": f"Error from LLM provider: {last_error}",
+        "tool_calls": [],
     }
 
 

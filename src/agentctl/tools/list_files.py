@@ -19,6 +19,7 @@ SCHEMA = {
             },
         },
         "required": [],
+        "additionalProperties": False,
     },
 }
 

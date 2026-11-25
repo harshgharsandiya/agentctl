@@ -21,6 +21,7 @@ SCHEMA = {
             },
         },
         "required": ["command"],
+        "additionalProperties": False,
     },
 }
 
