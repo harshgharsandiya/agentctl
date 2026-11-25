@@ -7,6 +7,7 @@ from rich.console import Console
 from rich.markdown import Markdown
 
 from agentctl.agent import run_agent
+from agentctl.history import compact_messages, load, make_session_id, save
 
 app = typer.Typer(add_completion=False, help="A simple CLI coding agent.")
 console = Console()
@@ -29,6 +30,62 @@ def _confirm_tool(name: str, arguments: dict[str, Any]) -> bool:
     return typer.confirm(f"Allow {summary}?", default=False)
 
 
+def _run_turn(
+    task: str,
+    session_id: str,
+    messages: list[dict[str, Any]],
+    yes: bool,
+) -> list[dict[str, Any]]:
+    """Execute one agent turn, print the response, and compact/save history."""
+    console.print("[dim]Thinking...[/dim]")
+    answer = run_agent(
+        task,
+        messages=messages,
+        yes=yes,
+        on_tool_call=_log_tool_call,
+        confirm_fn=_confirm_tool,
+    )
+    cleaned = compact_messages(messages)
+    save(session_id, cleaned)
+    console.print(Markdown(answer))
+    return cleaned
+
+
+def _session_loop(
+    session_id: str,
+    messages: list[dict[str, Any]],
+    yes: bool,
+    initial_task: str | None = None,
+) -> None:
+    """Run an interactive loop for a session until quit/exit/Ctrl+C/Ctrl+Z."""
+    console.print(
+        f"[bold cyan]Session '{session_id}'[/bold cyan] "
+        "[dim](type 'exit' or 'quit', or press Ctrl+C / Ctrl+Z to stop)[/dim]"
+    )
+
+    if initial_task:
+        messages = _run_turn(initial_task, session_id, messages, yes)
+
+    while True:
+        try:
+            user_input = input("\nYou > ").strip()
+        except (KeyboardInterrupt, EOFError):
+            console.print(f"\n[dim]Session saved: sessions/{session_id}.json[/dim]")
+            break
+
+        if not user_input:
+            continue
+        if user_input.lower() in {"exit", "quit", "q"}:
+            console.print(f"[dim]Session saved: sessions/{session_id}.json[/dim]")
+            break
+
+        try:
+            messages = _run_turn(user_input, session_id, messages, yes)
+        except KeyboardInterrupt:
+            console.print(f"\n[dim]Interrupted. Session saved: sessions/{session_id}.json[/dim]")
+            break
+
+
 @app.command()
 def run(
     task: Optional[str] = typer.Argument(
@@ -41,25 +98,29 @@ def run(
         "-y",
         help="Skip confirmation prompts for file edits and commands.",
     ),
+    session: Optional[str] = typer.Option(
+        None,
+        "--session",
+        "-s",
+        help="Session ID to open in a loop and save conversation history.",
+    ),
 ) -> None:
-    """Run agentctl with a one-shot task prompt."""
+    """Run agentctl one-shot or stay in an interactive session loop."""
+    if session:
+        messages = load(session)
+        _session_loop(session, messages, yes=yes, initial_task=task)
+        return
+
     if not task:
         console.print(
-            "[yellow]Please provide a task. Example:[/yellow] agentctl \"what does config.py do?\""
+            "[yellow]Please provide a task or --session. Example:[/yellow] agentctl \"what does config.py do?\""
         )
         raise typer.Exit(code=1)
 
-    _ = yes  # Reserved for tool confirmations in Phase 4.
-    console.print("[dim]Thinking...[/dim]")
-    answer = run_agent(
-        task,
-        messages=messages,
-        yes=yes,
-        on_tool_call=_log_tool_call,
-        confirm_fn=_confirm_tool,
-    )
-    saved_path = save(session_id, messages)
-    console.print(Markdown(answer))
+    session_id = make_session_id()
+    messages: list[dict[str, Any]] = []
+    _run_turn(task, session_id, messages, yes=yes)
+    console.print(f"[dim]Session saved: sessions/{session_id}.json[/dim]")
 
 
 def main() -> None:
