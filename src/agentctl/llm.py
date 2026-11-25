@@ -25,19 +25,32 @@ def call_llm(
         "messages": messages,
     }
     if tools:
-        kwargs["tools"] = tools
+        kwargs["tools"] = [
+            {"type": "function", "function": schema} for schema in tools
+        ]
+        # Let our agent loop return unknown-tool errors instead of failing on HTTP 400.
+        kwargs["disable_tool_validation"] = True
 
     response = client.chat.completions.create(**kwargs)
     message = response.choices[0].message
 
+    tool_calls = [
+        {
+            "id": tc.id,
+            "name": tc.function.name,
+            "arguments": tc.function.arguments,
+        }
+        for tc in (message.tool_calls or [])
+    ]
+
     return {
         "content": message.content or "",
-        "tool_calls": [],
+        "tool_calls": tool_calls,
     }
 
 
 if __name__ == "__main__":
     reply = call_llm(
-        [{"role": "user", "content": "Hello, can you tell me a joke?"}]
+        [{"role": "user", "content": "Say hello in one short sentence."}]
     )
     print(reply["content"])

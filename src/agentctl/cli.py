@@ -1,6 +1,6 @@
 """CLI entry point for agentctl."""
 
-from typing import Optional
+from typing import Any, Optional
 
 import typer
 from rich.console import Console
@@ -10,6 +10,12 @@ from agentctl.agent import run_agent
 
 app = typer.Typer(add_completion=False, help="A simple CLI coding agent.")
 console = Console()
+
+
+def _log_tool_call(name: str, arguments: dict[str, Any]) -> None:
+    """Display tool activity in the terminal as the agent works."""
+    formatted_args = ", ".join(f"{k}={v!r}" for k, v in arguments.items())
+    console.print(f"[dim]→ {name}({formatted_args})[/dim]")
 
 
 @app.command()
@@ -33,7 +39,8 @@ def run(
         raise typer.Exit(code=1)
 
     _ = yes  # Reserved for tool confirmations in Phase 4.
-    answer = run_agent(task)
+    console.print("[dim]Thinking...[/dim]")
+    answer = run_agent(task, on_tool_call=_log_tool_call)
     console.print(Markdown(answer))
 
 
