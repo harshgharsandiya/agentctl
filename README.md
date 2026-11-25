@@ -2,6 +2,10 @@
 
 A simple CLI coding agent in Python (powered by Groq) that reads, edits, searches, and runs code from your terminal.
 
+## Demo
+
+![agentctl chat terminal demo](test-code/demo.png)
+
 ## How It Works
 
 You give a task. The agent thinks, calls tools in a loop (up to `MAX_STEPS = 30`), checks the output, and streams the final Markdown answer to your terminal.
@@ -131,6 +135,14 @@ agentctl "what does @config.py do?" --session demo
 ```powershell
 pytest -v
 ```
+
+## Limitations
+
+- **`run_command` has no sandbox:** Approved shell commands execute directly on your machine; your `y/n` confirmation (disabled by `--yes`) is the only protection.
+- **Path safety does not constrain shell commands:** Path checks restrict the file tools (`read_file`, `write_file`, `edit_file`, `list_files`, `search_files`) to the current working directory, not arbitrary commands you approve in `run_command`.
+- **Single provider and model:** Only Groq (`openai/gpt-oss-20b` in `src/agentctl/config.py`) is supported out of the box.
+- **No cost tracking or general retries:** Token usage and API cost are not tracked, and only malformed tool-call stream errors retry once (no general network/rate-limit backoff).
+- **No automatic rollback:** Edits and writes modify files in place without an automatic undo or git diff preview.
 
 ## License
 
